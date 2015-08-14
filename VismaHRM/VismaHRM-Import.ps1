@@ -8,9 +8,9 @@ param (
 
 $FailSafe = 700  # Throw an error if the number of returned users is less then this
 
-$ADDomain = "mgk.lab" # OBS! LAB
-$ADPathEmployees = "OU=[FIM] Ansatte,OU=MGK,DC=mgk,DC=lab"  # OBS! LAB
-$ADPathGroups    = "OU=[FIM] Grupper,OU=MGK,DC=mgk,DC=lab"  # OBS! LAB
+$ADDomain = "mgk.no" 
+$ADPathEmployees = "OU=[FIM] Ansatte,OU=MGK,DC=mgk,DC=no" 
+$ADPathGroups    = "OU=[FIM] Grupper,OU=MGK,DC=mgk,DC=no" 
 
 $Server = "10.1.0.40:8090"
 $WebRequestTimeout = 999
@@ -23,6 +23,7 @@ $DaysUntillStart = 30 # Get employees that have not started yet as well
 $Log = "log.txt"
 
 #******************************************************************************
+# ABOUT: Version: 0.3, Author: kimberg88@gmail.com
 
 
 Set-Location $(split-path -parent $MyInvocation.MyCommand.Definition) # Set working directory to script directory
@@ -33,7 +34,7 @@ Function ProjectGroups($Groups) {
     Foreach ($Group in $Groups.GetEnumerator()) {
         $GroupName = "FIM-VISMA." + $Group.Key
 
-        $GroupName = $GroupName.Replace("/", " ").Replace("\", " ").Replace(":","") # Trim unwanted characters
+        $GroupName = $GroupName.Replace("/", " ").Replace("\", " ").Replace(":", " ").Replace(","," ") # Trim unwanted characters
 
         if ($GroupName.Length -gt 60) { # Max CN limit in Active Directory is 64
             $GroupName = $GroupName.Substring(0,60) 
@@ -82,17 +83,10 @@ Function ProjectUsers($URI, $OnlyFutureEmployees) {
             $obj.add("HRM_firstname", $Culture.ToTitleCase($Employee.givenName.toLower()).Trim())
             $obj.add("HRM_lastname", $Culture.ToTitleCase($Employee.familyName.toLower()).Trim())
             $obj.add("HRM_fullname" , $Culture.ToTitleCase(($Employee.givenName + " " + $Employee.familyName).toLower()).Trim())
-            $obj.add("HRM_type", $Employee.employments.employment.category.description)
-            $obj.add("HRM_comment", "FIM-VISMA : Ansatt fra $($EmployeeStart)  ($($Employee.employments.employment.category.description))")
+            $obj.add("HRM_type", "employee")
             $obj.add("HRM_ADPath", $ADPathEmployees)
 			$obj.add("HRM_ADDomain", $ADDomain)
-
-            # Spooky ghosts! 
-            if ($Employee.employments.employment.category.description -eq "Sluttet") {
-                $obj.add("HRM_status", "Inactive")
-            } else {
-                $obj.add("HRM_status", "Active")
-            }
+			$obj.add("HRM_status", "Active") # Inactive users are not returned by the web service
 
             Foreach ($Job in $Employee.employments.employment.positions.position) {
                 if ([DateTime]$Job.validFromDate -gt $(Get-Date)) { 
@@ -121,6 +115,8 @@ Function ProjectUsers($URI, $OnlyFutureEmployees) {
                     }
                 }
             }
+			$obj.add("HRM_comment", "FIM-VISMA : Ansatt $($EmployeeStart) : $Department")
+			$obj | Out-File $Log -Append
             $obj
 			$global:ReturnedUsers++
         }
