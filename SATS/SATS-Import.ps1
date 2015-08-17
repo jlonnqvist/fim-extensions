@@ -10,15 +10,15 @@ $FailSafe = 700  # Throw an error if the number of returned users is less then t
 
 $XML = "feideData.xml"
 
-$ADDomain = "mgk.lab"
-$ADPathEmployees = "OU=[FIM] Ansatte,OU=MGK,DC=mgk,DC=lab"  # OBS! LAB
-$ADPathStudents  = "OU=[FIM] Elever,OU=MGK,DC=mgk,DC=lab"   # OBS! LAB
-$ADPathGroups  = "OU=[FIM] Grupper,OU=MGK,DC=mgk,DC=lab"  # OBS! LAB
+$ADDomain = "mgk.no"
+$ADPathEmployees = "OU=[FIM] Ansatte,OU=MGK,DC=mgk,DC=no"
+$ADPathStudents  = "OU=[FIM] Elever,OU=MGK,DC=mgk,DC=no"   
+$ADPathGroups  = "OU=[FIM] Grupper,OU=MGK,DC=mgk,DC=no"
 
 $ADLDSDomain = "@midtre-gauldal.kommune.no"
-$ADLDSPathEmployees = "OU=Ansatte,OU=FeideKatalog,DC=midtregauldal,DC=kommune,DC=no"
-$ADLDSPathStudents  = "OU=Elever,OU=FeideKatalog,DC=midtregauldal,DC=kommune,DC=no"
-$ADLDSPathOrganizations  = "CN=Organization,DC=midtregauldal,DC=kommune,DC=no" #Trap
+$ADLDSPathEmployees = "CN=People,DC=midtre-gauldal,DC=kommune,DC=no"
+$ADLDSPathStudents  = "CN=People,DC=midtre-gauldal,DC=kommune,DC=no"
+$ADLDSPathOrganizations  = "CN=Organization,DC=midtre-gauldal,DC=kommune,DC=no" #Trap
 
 $Log = "log.txt"
 
@@ -30,6 +30,7 @@ $OrgAddress = "Rørosveien 11"
 $norEduOrgSchemaVersion = "1.5"
 
 #**************************************************************************
+# ABOUT: Version: 0.5, Author: kimberg88@gmail.com
 
 
 Set-Location $(split-path -parent $MyInvocation.MyCommand.Definition) # Set working directory to script directory
@@ -60,8 +61,8 @@ try {
 
     "$(Get-Date) :: Process Group Relations" | Out-File $Log -Append
     Foreach ($Relation in $PersonXML.document.relation) {
-        if($Relation.subject.groupid.groupidtype -eq "kl-ID") {
-            $GroupName = $Relation.subject.groupid.'#text'
+        if($Relation.subject.groupid.groupidtype -eq "kl-ID") { 
+            $GroupName = $Relation.subject.groupid.'#text' # STØRU:9A
             $SSN = $Relation.object.personid[0].'#text'        
             
             AddToGroup $GroupName $SSN
@@ -69,24 +70,40 @@ try {
 
         if ($Relation.subject.org) {
             $UserType = $Relation.relationtype
-            $GroupName = $Relation.subject.org.ouid.'#text'
+            $UnitName = $Relation.subject.org.ouid.'#text'  # STØRU
 
             switch ($UserType) { 
-                "has-pupil"   { $GroupName_All = $GroupName + "_ALLE-ELEVER" }
-                "has-teacher" { $GroupName_All = $GroupName + "_ALLE-LAERERE" }
-                "has-staff"   { $GroupName_All = $GroupName + "_ALLE-ANSATTE" }
+                "has-pupil"   { $GroupName_All = $UnitName + "_ALLE-ELEVER" }
+                "has-teacher" { $GroupName_All = $UnitName + "_ALLE-LAERERE" }
+                "has-staff"   { $GroupName_All = $UnitName + "_ALLE-ANSATTE" }
             }
 
             Foreach ($P in $Relation.object.personid) {
                 if ($P.personidtype -eq "Fnr") {
                     $SSN = $P.'#text'
-                    AddToGroup ($GroupName + "_ALLE") $SSN
+                    AddToGroup ($UnitName + "_ALLE") $SSN
                     AddToGroup $GroupName_All $SSN
                 }
             }
         }
-
+		
+		
     }
+	
+	
+	"$(Get-Date) :: Project Main Organization" | Out-File $Log -Append
+    $obj = @{}
+    $obj.add("SATS_OrgNr", $OrgNr)
+	$obj.add("objectClass", "organization")
+    $obj.add("SATS_OrgName", $OrgName)
+    $obj.add("SATS_OrgMail", $OrgMail ) 
+    $obj.add("SATS_telephone", $OrgTlf ) 
+    $obj.add("SATS_postalAddress", $OrgAddress) 
+	$obj.add("SATS_norEduOrgSchemaVersion", $norEduOrgSchemaVersion) 
+    $obj.add("SATS_ADLDSPath", $ADLDSPathOrganizations)
+    $obj.add("SATS_ADLDSDomain", $ADLDSDomain)
+    $obj
+
 
     Foreach ($Group in $Groups.GetEnumerator()) {
         $GroupName = $Group.key
@@ -105,9 +122,26 @@ try {
         $obj
     } 
 
-    Foreach ($Person in $PersonXML.document.person) {
-        $SSN = $Person.personid[0].'#text'
+    Foreach ($Unit in $PersonXML.document.organization.ou) {
+        $UnitOrgNR = "NO" + $Unit.ouid[1].'#text'
+		$UnitName = $Unit.ouname[0].'#text'
+        "$(Get-Date) :: Project Unit: $UnitOrgNR" | Out-File $Log -Append
 
+        $obj = @{}
+        $obj.add("SATS_UnitOrgNr", $UnitOrgNR)
+	    $obj.add("objectClass", "unit")
+        $obj.add("SATS_OrgName", $UnitName)
+        $obj.add("SATS_OrgMail", $OrgMail) #$Unit.contactinfo[2].'#text'
+        $obj.add("SATS_telephone", $Unit.contactinfo[0].'#text') 
+        $obj.add("SATS_MemberOfOrganization", $OrgNr) 
+        $obj.add("SATS_ADLDSPath", $ADLDSPathOrganizations)
+        $obj.add("SATS_ADLDSDomain", $ADLDSDomain)
+        $obj
+		$obj | Out-File $Log -Append
+    }
+	
+	Foreach ($Person in $PersonXML.document.person) {
+        $SSN = $Person.personid[0].'#text'
         "$(Get-Date) :: Project Person: $SSN " | Out-File $Log -Append
 
         $MemberOfGroups = $Groups.GetEnumerator() | Where-Object { $_.Value.Contains($SSN) }
@@ -120,6 +154,15 @@ try {
             $ADPath = $ADPathEmployees
             $ADLDSPath = $ADLDSPathEmployees
         }
+		
+		Foreach ($Unit in $PersonXML.document.organization.ou) {
+			$UnitOrgNR = "NO" + $Unit.ouid[1].'#text'
+			$UnitName = $Unit.ouid[2].'#text'
+			if ($MemberOfGroups | Where-Object { $_.Name.contains($UnitName) }) {
+				$MemberOfUnit = $UnitOrgNR
+				$MemberOfUnitName = $UnitName
+			}
+		}
 
         $obj = @{}
 		$obj.add("SATS_ssn", $SSN)
@@ -128,55 +171,27 @@ try {
         $obj.add("SATS_Firstname", $Person.name.n.given)
         $obj.add("SATS_Lastname", $Person.name.n.family)
         $obj.add("SATS_Status", "Active")
-        $obj.add("SATS_Comment", "FIM-SATS: " + $Type)
+        $obj.add("SATS_Comment", "FIM-SATS : $($MemberOfUnitName) : $($Type)")
         $obj.add("SATS_Type", $Type)
         $obj.add("SATS_ADPath", $ADPath)
         $obj.add("SATS_ADLDSPath", $ADLDSPath)
         $obj.add("SATS_ADDomain", $ADDomain)
         $obj.add("SATS_ADLDSDomain", $ADLDSDomain)
+		$obj.add("SATS_MemberOfOrganization", $OrgNr) 
+		$obj.add("SATS_MemberOfUnit", $MemberOfUnit) 
         $obj
 		$global:ReturnedUsers++
     }
 
 
-    Foreach ($Unit in $PersonXML.document.organization.ou) {
-        $OrgNR = "NO" + $Unit.ouid[1].'#text'
-        "$(Get-Date) :: Project Unit: $OrgNR" | Out-File $Log -Append
-
-        $obj = @{}
-        $obj.add("SATS_OrgNr", $OrgNR)
-	    $obj.add("objectClass", "unit")
-        $obj.add("SATS_OrgName", $Unit.ouname[0].'#text')
-        $obj.add("SATS_OrgMail", $OrgMail) #$Unit.contactinfo[2].'#text'
-        $obj.add("SATS_telephone", $Unit.contactinfo[0].'#text') 
-        $obj.add("MemberOf", $OrgNr) 
-        $obj.add("SATS_ADLDSPath", $ADLDSPathOrganizations)
-        $obj.add("SATS_ADLDSDomain", $ADLDSDomain)
-        $obj
-    }
-
-	
-    "$(Get-Date) :: Project Main Organization" | Out-File $Log -Append
-    $obj = @{}
-    $obj.add("SATS_OrgNr", $OrgNr)
-	$obj.add("objectClass", "organization")
-    $obj.add("SATS_OrgName", $OrgName)
-    $obj.add("SATS_OrgMail", $OrgMail ) 
-    $obj.add("SATS_telephone", $OrgTlf ) 
-    $obj.add("SATS_postalAddress", $OrgAddress) 
-	$obj.add("SATS_norEduOrgSchemaVersion", $norEduOrgSchemaVersion) 
-    $obj.add("SATS_ADLDSPath", $ADLDSPathOrganizations)
-    $obj.add("SATS_ADLDSDomain", $ADLDSDomain)
-    $obj
-
-    "$(Get-Date) :: Import End" | Out-File $Log -Append
 	
 	if ($ReturnedUsers -lt $FailSafe) {
 		$Error = "The script returned less users then the specified failsafe-threshold. Something likely went wrong... Threshold: $($FailSafe). Returned users: $($ReturnedUsers)"
-		Throw $Error
+		#Throw $Error
 		$Error | Out-File $Log -Append
 	}
-
+	
+	"$(Get-Date) :: Import End" | Out-File $Log -Append
 } catch {
     $_ | Out-File $Log -Append
 }
