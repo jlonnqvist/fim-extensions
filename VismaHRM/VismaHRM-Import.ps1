@@ -10,6 +10,7 @@ $FailSafe = 700  # Throw an error if the number of returned users is less then t
 
 $ADDomain = "mgk.no" 
 $ADPathEmployees = "OU=[FIM] Ansatte,OU=MGK,DC=mgk,DC=no" 
+$ADPathDisabledEmployees = "OU=Deaktivert,OU=[FIM] Ansatte,OU=MGK,DC=mgk,DC=no" 
 $ADPathGroups    = "OU=[FIM] Grupper,OU=MGK,DC=mgk,DC=no" 
 
 $Server = "10.1.0.40:8090"
@@ -23,7 +24,7 @@ $DaysUntillStart = 30 # Get employees that have not started yet as well
 $Log = "log.txt"
 
 #******************************************************************************
-# ABOUT: Version: 0.3, Author: kimberg88@gmail.com
+# ABOUT: Version: 0.4, Author: kimberg88@gmail.com
 
 
 Set-Location $(split-path -parent $MyInvocation.MyCommand.Definition) # Set working directory to script directory
@@ -85,6 +86,7 @@ Function ProjectUsers($URI, $OnlyFutureEmployees) {
             $obj.add("HRM_fullname" , $Culture.ToTitleCase(($Employee.givenName + " " + $Employee.familyName).toLower()).Trim())
             $obj.add("HRM_type", "employee")
             $obj.add("HRM_ADPath", $ADPathEmployees)
+			$obj.add("HRM_ADPathDisabled", $ADPathDisabledEmployees)
 			$obj.add("HRM_ADDomain", $ADDomain)
 			$obj.add("HRM_status", "Active") # Inactive users are not returned by the web service
 
@@ -112,10 +114,11 @@ Function ProjectUsers($URI, $OnlyFutureEmployees) {
 
                     if ($Job.isPrimaryPosition -eq "true") {
                         $obj.add("HRM_mainDepartment", $Department)
+						$obj.add("HRM_jobtitle", $Job.positionStatistics.workClassification.name)
                     }
                 }
             }
-			$obj.add("HRM_comment", "FIM-VISMA : Ansatt $($EmployeeStart) : $Department")
+			$obj.add("HRM_comment", "FIM-VISMA : $Department : Ansatt $($EmployeeStart)")
 			$obj | Out-File $Log -Append
             $obj
 			$global:ReturnedUsers++

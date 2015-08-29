@@ -8,9 +8,11 @@ $obj | Add-Member -Type NoteProperty -Name "HRM_lastname|String" -Value "Granfel
 $obj | Add-Member -Type NoteProperty -Name "HRM_fullname|String" -Value "Soren Granfeldt"
 $obj | Add-Member -Type NoteProperty -Name "HRM_status|String" -Value "Active"
 $obj | Add-Member -Type NoteProperty -Name "HRM_mainDepartment|String" -Value "Active"
+$obj | Add-Member -Type NoteProperty -Name "HRM_jobtitle|String" -Value "Active"
 $obj | Add-Member -Type NoteProperty -Name "HRM_type|String" -Value "Active"
 $obj | Add-Member -Type NoteProperty -Name "HRM_comment|String" -Value "Active"
 $obj | Add-Member -Type NoteProperty -Name "HRM_ADPath|String" -Value "Active"
+$obj | Add-Member -Type NoteProperty -Name "HRM_ADPathDisabled|String" -Value "Active"
 $obj | Add-Member -Type NoteProperty -Name "HRM_ADDomain|String" -Value "Active"
 $obj | Add-Member -Type NoteProperty -Name "MemberOf|Reference[]" -Value (2,3)
 
