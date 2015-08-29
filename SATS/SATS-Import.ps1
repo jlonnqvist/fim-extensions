@@ -11,9 +11,14 @@ $FailSafe = 700  # Throw an error if the number of returned users is less then t
 $XML = "feideData.xml"
 
 $ADDomain = "mgk.no"
-$ADPathEmployees = "OU=[FIM] Ansatte,OU=MGK,DC=mgk,DC=no"
-$ADPathStudents  = "OU=[FIM] Elever,OU=MGK,DC=mgk,DC=no"   
 $ADPathGroups  = "OU=[FIM] Grupper,OU=MGK,DC=mgk,DC=no"
+
+$ADPathEmployees = "OU=[FIM] Ansatte,OU=MGK,DC=mgk,DC=no"
+$ADPathDisabledEmployees = "OU=Deaktivert,OU=[FIM] Ansatte,OU=MGK,DC=mgk,DC=no"
+
+$ADPathStudents  = "OU=[FIM] Elever,OU=MGK,DC=mgk,DC=no"   
+$ADPathDisabledStudents  = "OU=Deaktivert,OU=[FIM] Elever,OU=MGK,DC=mgk,DC=no"  
+
 
 $ADLDSDomain = "@midtre-gauldal.kommune.no"
 $ADLDSPathEmployees = "CN=People,DC=midtre-gauldal,DC=kommune,DC=no"
@@ -26,14 +31,14 @@ $OrgNr = "NO970187715"
 $OrgName = "Sør-Trøndelag"
 $OrgMail = "postmottak@midtre-gauldal.kommune.no"
 $OrgTlf = "72403000"
-$OrgAddress = "Rørosveien 11"
-$norEduOrgSchemaVersion = "1.5"
+$OrgAddress = "Rådhuset"
+$norEduOrgSchemaVersion = "1.5.1" 	# https://www.feide.no/sites/feide.no/files/documents/go_attributter.pdf
 
 #**************************************************************************
-# ABOUT: Version: 0.5, Author: kimberg88@gmail.com
-
+# ABOUT: Version: 0.6, Author: kimberg88@gmail.com
 
 Set-Location $(split-path -parent $MyInvocation.MyCommand.Definition) # Set working directory to script directory
+
 
 $Groups = @{}
 $global:ReturnedUsers = 0
@@ -149,10 +154,19 @@ try {
             $Type = "student"
             $ADPath = $ADPathStudents
             $ADLDSPath = $ADLDSPathStudents
+			$ADLDSPathDisabled = $ADPathDisabledStudents
+			$Trinn = $MemberOfGroups | Where-Object { $_.Name -Match "[0-9]" }
+			$Trinn = $Trinn.Name -creplace "[^0-9]"
+			$Department = $Trinn + " trinn"
+			# https://www.feide.no/sites/feide.no/files/go_attributter_1.6-jul2015.pdf
+			$Entitlement = "urn:mace:feide.no:go:grep:http://psi.udir.no/laereplan/aarstrinn/aarstrinn$($Trinn)"
         } else {
+			$Department = $NULL
+			$Entitlement = $NULL
             $Type = "employee"
             $ADPath = $ADPathEmployees
             $ADLDSPath = $ADLDSPathEmployees
+			$ADLDSPathDisabled = $ADPathDisabledEmployees
         }
 		
 		Foreach ($Unit in $PersonXML.document.organization.ou) {
@@ -173,7 +187,11 @@ try {
         $obj.add("SATS_Status", "Active")
         $obj.add("SATS_Comment", "FIM-SATS : $($MemberOfUnitName) : $($Type)")
         $obj.add("SATS_Type", $Type)
+		$obj.add("SATS_Department", $Department)
+		$obj.add("SATS_Affilliation", ("member", $Type))
+		$obj.add("SATS_Entitlement", $Entitlement)
         $obj.add("SATS_ADPath", $ADPath)
+		$obj.add("SATS_ADPathDisabled", $ADLDSPathDisabled)
         $obj.add("SATS_ADLDSPath", $ADLDSPath)
         $obj.add("SATS_ADDomain", $ADDomain)
         $obj.add("SATS_ADLDSDomain", $ADLDSDomain)
