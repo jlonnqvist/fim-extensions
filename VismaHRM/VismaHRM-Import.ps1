@@ -6,7 +6,7 @@ param (
 
 # CONFIG **********************************************************************
 
-$FailSafe = 700  # Throw an error if the number of returned users is less then this
+$FailSafe = 1  # Throw an error if the number of returned users is less then this
 
 $ADDomain = "mgk.no" 
 $ADPathEmployees = "OU=[FIM] Ansatte,OU=MGK,DC=mgk,DC=no" 
@@ -16,15 +16,15 @@ $ADPathGroups    = "OU=[FIM] Grupper,OU=MGK,DC=mgk,DC=no"
 $Server = "10.1.0.40:8090"
 $WebRequestTimeout = 999
 
-$CompanyID = 1
 $EmployeeStartID = 1
 $EmployeeEndID = 9999
 $DaysUntillStart = 30 # Get employees that have not started yet as well
 
-$Log = "log.txt"
+$Log = "log-import.txt"
 
 #******************************************************************************
-# ABOUT: Version: 0.4, Author: kimberg88@gmail.com
+# ABOUT: Version: 1.0, Author: kimberg88@gmail.com
+# REQUIREMENT: Webservice: "Visma HRM-WS"
 
 
 Set-Location $(split-path -parent $MyInvocation.MyCommand.Definition) # Set working directory to script directory
@@ -47,8 +47,7 @@ Function ProjectGroups($Groups) {
         $obj.add("displayName", $GroupName)
         $obj.add("HRM_ADPath", $ADPathGroups)
         $obj.add("Member", $Group.Value) 
-        $obj
-        
+        $obj 
     }
 }
 
@@ -66,6 +65,10 @@ Function ProjectUsers($URI, $OnlyFutureEmployees) {
         Foreach ($Employee in $EmployeeXML) {
             $EmployeeID = $Employee.employments.employment.employeeId.ToString()
             $EmployeeStart = $Employee.employments.employment.startDate
+			$Department = "Ingen Avdeling"
+			$PrimaryDepartment = $NULL
+			$JobTitle = $NULL
+			
             "[$(Get-Date)] Process employee: $($EmployeeID)" | Out-File $Log -Append
 
             if ($OnlyFutureEmployees) { 
@@ -74,32 +77,15 @@ Function ProjectUsers($URI, $OnlyFutureEmployees) {
                     Continue
                 }
             }
-
-            $obj = @{}
-
-		    $obj.add("HRM_employeeID", $EmployeeID)
-		    $obj.add("objectClass", "user")
-
-            $obj.add("HRM_ssn", $Employee.ssn.toString())
-            $obj.add("HRM_firstname", $Culture.ToTitleCase($Employee.givenName.toLower()).Trim())
-            $obj.add("HRM_lastname", $Culture.ToTitleCase($Employee.familyName.toLower()).Trim())
-            $obj.add("HRM_fullname" , $Culture.ToTitleCase(($Employee.givenName + " " + $Employee.familyName).toLower()).Trim())
-            $obj.add("HRM_type", "employee")
-            $obj.add("HRM_ADPath", $ADPathEmployees)
-			$obj.add("HRM_ADPathDisabled", $ADPathDisabledEmployees)
-			$obj.add("HRM_ADDomain", $ADDomain)
-			$obj.add("HRM_status", "Active") # Inactive users are not returned by the web service
-
+			
             Foreach ($Job in $Employee.employments.employment.positions.position) {
-                if ([DateTime]$Job.validFromDate -gt $(Get-Date)) { 
-                    # Skip jobs that have not started
-                    continue 
-                } 
+				# Skip jobs that have not yet started
+                if ([DateTime]$Job.validFromDate -gt $(Get-Date)) { continue } 
 
                 $Department = $Job.costCentres.dimension2.name
 
                 if ($Department) {
-                    If($Groups.Count -gt 0) { # Pretty, pretty Lame
+                    If($Groups.Count -gt 0) { # If we do a 'get_item' when $Groups are empty it will crash and burn
                         If($Groups.Get_Item($Department)) {
                             if(-not $Groups.Get_Item($Department).Contains($EmployeeID)) {
                                 $Members = $Groups.Get_Item($Department) + $EmployeeID
@@ -113,14 +99,33 @@ Function ProjectUsers($URI, $OnlyFutureEmployees) {
                     }
 
                     if ($Job.isPrimaryPosition -eq "true") {
-                        $obj.add("HRM_mainDepartment", $Department)
-						$obj.add("HRM_jobtitle", $Job.positionStatistics.workClassification.name)
+						$PrimaryDepartment = $Department
+                        $JobTitle = $Job.positionStatistics.workClassification.name
                     }
                 }
             }
-			$obj.add("HRM_comment", "FIM-VISMA : $Department : Ansatt $($EmployeeStart)")
-			$obj | Out-File $Log -Append
+			
+			$CurrentAliases = $Employee.authentication.alias
+			if ($CurrentAliases) { $CurrentAliases = $CurrentAliases.toLower() }
+			
+			$obj = @{}
+		    $obj.add("HRM_employeeID", $EmployeeID)
+		    $obj.add("objectClass", "user")
+            $obj.add("HRM_ssn", $Employee.ssn.toString())
+			$obj.add("HRM_UserID", $Employee.authentication.userId.toString())
+			$obj.add("HRM_Alias", $CurrentAliases)
+            $obj.add("HRM_firstname", $Culture.ToTitleCase($Employee.givenName.toLower()).Trim())
+            $obj.add("HRM_lastname", $Culture.ToTitleCase($Employee.familyName.toLower()).Trim())
+            $obj.add("HRM_fullname" , $Culture.ToTitleCase(($Employee.givenName + " " + $Employee.familyName).toLower()).Trim())
+            $obj.add("HRM_type", "employee")
+			$obj.add("HRM_mainDepartment", $PrimaryDepartment)
+			$obj.add("HRM_jobtitle", $JobTitle)
+            $obj.add("HRM_ADPath", $ADPathEmployees)
+			$obj.add("HRM_ADPathDisabled", $ADPathDisabledEmployees)
+			$obj.add("HRM_ADDomain", $ADDomain)
+			$obj.add("HRM_comment", "FIM-VISMA : Ansatt $($EmployeeStart) : $Department")
             $obj
+			
 			$global:ReturnedUsers++
         }
 	
@@ -131,10 +136,10 @@ Function ProjectUsers($URI, $OnlyFutureEmployees) {
 }
 
 
-$URI = "http://$($Server)/hrm_ws/secure/persons/company/$($CompanyID)/start-id/$($EmployeeStartID)/end-id/$($EmployeeEndID)"
+$URI = "http://$($Server)/hrm_ws/secure/persons/company/1/start-id/$($EmployeeStartID)/end-id/$($EmployeeEndID)"
 ProjectUsers $URI $False
 
-$URI = "http://$($Server)/hrm_ws/secure/persons/company/$($CompanyID)/not-started/date-interval/$((Get-Date).AddDays(1).ToString('yyyy-MM-dd'))/$((Get-Date).AddDays($DaysUntillStart).ToString('yyyy-MM-dd'))"
+$URI = "http://$($Server)/hrm_ws/secure/persons/company/1/not-started/date-interval/$((Get-Date).AddDays(1).ToString('yyyy-MM-dd'))/$((Get-Date).AddDays($DaysUntillStart).ToString('yyyy-MM-dd'))"
 ProjectUsers $URI $True
 
 ProjectGroups $Groups
