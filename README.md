@@ -2,6 +2,6 @@
 Extensions for Microsoft Forefront Identity Manager
 
 The powershell scripts require Søren Granfeldt's powershell management agent:
-http://blog.goverco.com/p/psmainstall.html
+https://github.com/sorengranfeldt/psma
 
 Used in production since july 2015. 
