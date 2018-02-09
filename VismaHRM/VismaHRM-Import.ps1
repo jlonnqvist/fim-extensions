@@ -34,7 +34,7 @@ $global:GroupsOC = @()
 $global:ReturnedUsers = 0
 
 
-Function ProjectUsers($XMLPath, $OnlyFutureEmployees) {
+Function ProjectUsers($URI, $OnlyFutureEmployees) {
     try {
 	    "[$(Get-Date)] Request URI: $($URI)" | Out-File $Log -Append
 		$Culture = (Get-Culture).TextInfo
